@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import React, { memo, useEffect, useRef, useState } from "react";
 import hero3d from "@/assets/hero-3d.jpg";
 import ronny1 from "@/assets/ronny-1.jpg";
 import ronny2 from "@/assets/ronny-2.jpg";
@@ -29,6 +30,8 @@ export const Route = createFileRoute("/")({
     links: [
       { rel: "canonical", href: "/" },
       { rel: "icon", type: "image/png", href: "/favicon.png" },
+      // Preload apenas da imagem crítica (hero)
+      { rel: "preload", as: "image", href: hero3d, type: "image/jpeg" },
     ],
     scripts: [
       {
@@ -61,6 +64,107 @@ export const Route = createFileRoute("/")({
       },
     ],
   }),
+});
+
+// Hook para detectar se elemento está na viewport
+function useInViewport(ref: React.RefObject<HTMLElement | null>) {
+  const [isInViewport, setIsInViewport] = useState(false);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry) {
+          setIsInViewport(entry.isIntersecting);
+        }
+      },
+      { threshold: 0.1, rootMargin: "50px" }
+    );
+
+    if (ref.current) {
+      observer.observe(ref.current);
+    }
+
+    return () => {
+      if (ref.current) {
+        observer.unobserve(ref.current);
+      }
+      observer.disconnect();
+    };
+  }, [ref]);
+
+  return isInViewport;
+}
+
+// Componente de seção otimizada com lazy loading
+const OptimizedSection = memo(({ 
+  id, 
+  className, 
+  children 
+}: { 
+  id?: string; 
+  className?: string; 
+  children: React.ReactNode;
+}) => {
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const isInViewport = useInViewport(sectionRef);
+  const [hasBeenVisible, setHasBeenVisible] = useState(false);
+
+  useEffect(() => {
+    if (isInViewport) {
+      setHasBeenVisible(true);
+    }
+  }, [isInViewport]);
+
+  return (
+    <section
+      ref={sectionRef}
+      id={id}
+      className={className}
+      style={{
+        contentVisibility: hasBeenVisible ? "visible" : "auto",
+        containIntrinsicSize: "500px",
+      }}
+    >
+      {children}
+    </section>
+  );
+});
+
+// TeamSlide otimizado com memo
+const OptimizedTeamSlide = memo(TeamSlide);
+
+// Componente de imagem otimizado
+const OptimizedImage = memo(({ 
+  src, 
+  alt, 
+  width, 
+  height, 
+  className, 
+  style,
+  priority = false 
+}: { 
+  src: string; 
+  alt: string; 
+  width: number; 
+  height: number; 
+  className?: string; 
+  style?: React.CSSProperties;
+  priority?: boolean;
+}) => {
+  return (
+    <img
+      src={src}
+      alt={alt}
+      width={width}
+      height={height}
+      loading={priority ? "eager" : "lazy"}
+      decoding={priority ? "sync" : "async"}
+      fetchPriority={priority ? "high" : "low"}
+      className={className}
+      style={style}
+    />
+  );
 });
 
 const steps = [
@@ -120,6 +224,22 @@ const faq = [
 ];
 
 function Index() {
+  const mainRef = useRef<HTMLElement | null>(null);
+
+  // Pausar animações quando a aba não está visível
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        document.body.classList.add('animations-paused');
+      } else {
+        document.body.classList.remove('animations-paused');
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
   return (
     <div className="min-h-screen">
       <div className="tech-waves" aria-hidden="true">
@@ -128,7 +248,8 @@ function Index() {
         <div className="tech-glow tech-glow-b" />
         <div className="tech-scanline" />
       </div>
-      <header className="sticky top-0 z-50 border-b border-border/60 backdrop-blur-xl">
+      
+      <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <a href="/" className="text-lg font-extrabold tracking-tight" aria-label="Tecnologia Vision — página inicial">
             TECNOLOGIA <span className="text-gradient">VISION</span>
@@ -150,8 +271,8 @@ function Index() {
         </div>
       </header>
 
-      <main>
-        {/* HERO */}
+      <main ref={mainRef}>
+        {/* HERO - Carrega imediatamente */}
         <section className="relative overflow-hidden">
           <div className="mx-auto grid max-w-6xl items-center gap-14 px-6 py-24 lg:grid-cols-2 lg:py-32">
             <div className="animate-rise">
@@ -187,14 +308,19 @@ function Index() {
             </div>
 
             <div className="perspective">
-              <div className="animate-float">
-                <img
+              <div className="animate-float will-change-transform">
+                <OptimizedImage
                   src={hero3d}
                   alt="Composição 3D de esferas em degradê violeta representando inovação tecnológica"
                   width={1600}
                   height={1200}
+                  priority={true}
                   className="glass-card w-full rounded-[2rem] object-cover"
-                  style={{ transform: "rotateY(-10deg) rotateX(6deg)", boxShadow: "var(--shadow-glow)" }}
+                  style={{ 
+                    transform: "rotateY(-10deg) rotateX(6deg)", 
+                    boxShadow: "var(--shadow-glow)",
+                    transition: "transform 0.3s ease"
+                  }}
                 />
               </div>
             </div>
@@ -202,7 +328,7 @@ function Index() {
         </section>
 
         {/* PROCESSO 1-6 */}
-        <section id="processo" className="mx-auto max-w-6xl px-6 py-24">
+        <OptimizedSection id="processo" className="mx-auto max-w-6xl px-6 py-24">
           <Reveal>
             <p className="text-sm font-semibold uppercase tracking-[0.28em] text-gradient">
               Nosso método
@@ -228,10 +354,10 @@ function Index() {
               </Reveal>
             ))}
           </div>
-        </section>
+        </OptimizedSection>
 
         {/* EQUIPE */}
-        <section id="equipe" className="mx-auto max-w-6xl px-6 py-24">
+        <OptimizedSection id="equipe" className="mx-auto max-w-6xl px-6 py-24">
           <Reveal>
             <p className="text-sm font-semibold uppercase tracking-[0.28em] text-gradient">
               Quem faz acontecer
@@ -246,7 +372,7 @@ function Index() {
 
           <div className="mt-14 grid gap-8 md:grid-cols-2 lg:grid-cols-3">
             <Reveal>
-              <TeamSlide
+              <OptimizedTeamSlide
                 name="Ronny"
                 role="Gestor de tráfego e comunicação"
                 description="Planeja e gerencia campanhas, distribui a mensagem certa para o público certo e traduz dados em decisões de comunicação."
@@ -257,7 +383,7 @@ function Index() {
               />
             </Reveal>
             <Reveal delay={120}>
-              <TeamSlide
+              <OptimizedTeamSlide
                 name="Claudio"
                 role="Analista de desenvolvimento de sistemas"
                 description="Constrói as soluções digitais: sites, sistemas e integrações que sustentam a presença da sua empresa com performance e segurança."
@@ -269,7 +395,7 @@ function Index() {
               />
             </Reveal>
             <Reveal delay={240}>
-              <TeamSlide
+              <OptimizedTeamSlide
                 name="Ryan"
                 role="Prospector de qualificação moderna"
                 description="Identifica e qualifica oportunidades reais, conectando a empresa a clientes e parceiros com abordagem consultiva."
@@ -281,10 +407,10 @@ function Index() {
               />
             </Reveal>
           </div>
-        </section>
+        </OptimizedSection>
 
         {/* COMO TRABALHAMOS */}
-        <section id="trabalho" className="relative py-24">
+        <OptimizedSection id="trabalho" className="relative py-24">
           <div className="mx-auto max-w-4xl px-6">
             <Reveal>
               <div className="glass-card rounded-[2rem] p-8 sm:p-14">
@@ -323,10 +449,10 @@ function Index() {
               </div>
             </Reveal>
           </div>
-        </section>
+        </OptimizedSection>
 
         {/* DÚVIDAS */}
-        <section id="duvidas" className="mx-auto max-w-4xl px-6 py-24">
+        <OptimizedSection id="duvidas" className="mx-auto max-w-4xl px-6 py-24">
           <Reveal>
             <p className="text-sm font-semibold uppercase tracking-[0.28em] text-gradient">Dúvidas</p>
             <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-5xl">
@@ -347,10 +473,10 @@ function Index() {
               </Reveal>
             ))}
           </div>
-        </section>
+        </OptimizedSection>
 
         {/* CTA */}
-        <section id="contato" className="mx-auto max-w-6xl px-6 pb-28">
+        <OptimizedSection id="contato" className="mx-auto max-w-6xl px-6 pb-28">
           <Reveal>
             <div
               className="relative overflow-hidden rounded-[2rem] p-10 text-center sm:p-16"
@@ -372,7 +498,7 @@ function Index() {
               </a>
             </div>
           </Reveal>
-        </section>
+        </OptimizedSection>
       </main>
 
       <footer className="border-t border-border/60 py-10">
